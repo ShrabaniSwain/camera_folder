@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="folder_item_height">40dp</dimen>
+    <dimen name="_47dp">47dp</dimen>
+    <dimen name="_16sp">16sp</dimen>
+    <dimen name="_13sp">13sp</dimen>
+    <dimen name="_68dp">68dp</dimen>
+</resources>
