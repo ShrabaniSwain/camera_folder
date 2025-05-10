@@ -19,7 +19,6 @@ import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraMetadata
-import android.hardware.camera2.CaptureFailure
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.MeteringRectangle
@@ -32,10 +31,8 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
-import android.util.DisplayMetrics
 import android.util.Log
 import android.util.Size
-import android.util.SparseIntArray
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
@@ -113,15 +110,6 @@ class MainActivity : AppCompatActivity() {
     private var path = ""
     private var hasRecordingStarted = false
     private var wasInBackground = false
-
-    companion object {
-        private val ORIENTATIONS = SparseIntArray().apply {
-            append(Surface.ROTATION_0, 90)
-            append(Surface.ROTATION_90, 0)
-            append(Surface.ROTATION_180, 270)
-            append(Surface.ROTATION_270, 180)
-        }
-    }
 
     @RequiresPermission(Manifest.permission.CAMERA)
     @SuppressLint("ClickableViewAccessibility")
@@ -211,19 +199,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-
-
-//        binding.modeSwitch.setOnClickListener {
-//            if (path.isBlank()) return@setOnClickListener
-//            isCapture = isCapture.not()
-//            if (flash == 2) {
-//                flash = 0
-//                binding.flash.performClick()
-//            }
-//            binding.modeSwitch.setImageResource(if (isCapture) R.mipmap.ic_camera_mode else R.mipmap.ic_video_mode)
-//            binding.capture.setImageResource(if (isCapture) R.mipmap.ic_image_capture else R.mipmap.ic_video_start)
-//            startCamera()
-//        }
 
         binding.photoClick.setOnClickListener {
             if (!isCapture) {
@@ -335,7 +310,7 @@ class MainActivity : AppCompatActivity() {
                                 override fun onCaptureCompleted(
                                     session: CameraCaptureSession,
                                     request: CaptureRequest,
-                                    result: android.hardware.camera2.TotalCaptureResult
+                                    result: TotalCaptureResult
                                 ) {
                                     // Reset AF trigger
                                     previewRequestBuilder.set(
@@ -421,7 +396,6 @@ class MainActivity : AppCompatActivity() {
             binding.flash.performClick()
         }
 
-//        binding.modeSwitch.setImageResource(if (isCapture) R.mipmap.ic_camera_mode else R.mipmap.ic_video_mode)
         binding.capture.setImageResource(if (isCapture) R.drawable.camera_capture else R.drawable.video_capture)
 
         // Highlight active text
@@ -475,22 +449,18 @@ class MainActivity : AppCompatActivity() {
         val points = floatArrayOf(x, y)
         inverseMatrix.mapPoints(points)
 
-        // Calculate normalized coordinates (0-1)
         val normalizedX = points[0] / previewRect.width()
         val normalizedY = points[1] / previewRect.height()
 
-        // Apply aspect ratio correction based on sensor orientation
         val isFrontFacing =
             characteristics.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
         val sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
 
-        // Adjust X,Y based on orientation
         val correctedX: Float
         val correctedY: Float
 
         when (sensorOrientation) {
             90, 270 -> {
-                // Swap coordinates for portrait orientation
                 correctedX = normalizedY
                 correctedY = if (sensorOrientation == 90) 1f - normalizedX else normalizedX
             }
@@ -852,63 +822,81 @@ class MainActivity : AppCompatActivity() {
         val file = File(path, "IMG_${System.currentTimeMillis()}.jpg")
         lastPath = file.absolutePath
 
-        // ✅ Use optimal capture size
-        val optimalSize = getOptimalCaptureSize()
         imageReader =
-            ImageReader.newInstance(optimalSize.width, optimalSize.height, ImageFormat.JPEG, 1)
-
+            ImageReader.newInstance(previewSize.width, previewSize.height, ImageFormat.JPEG, 1)
         imageReader.setOnImageAvailableListener({ reader ->
-            val image = reader.acquireLatestImage()
-            image?.use {
-                val buffer = it.planes[0].buffer
-                val bytes = ByteArray(buffer.remaining())
-                buffer.get(bytes)
+            val image = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
 
-                val originalBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            lifecycleScope.launch(Dispatchers.IO) {
+                image.use {
+                    val buffer = it.planes[0].buffer
+                    val bytes = ByteArray(buffer.remaining())
+                    buffer.get(bytes)
+                    // === ✅ Crop to match preview aspect ratio ===
+                    val originalBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
 
-                // ✅ Correct rotation using sensor + device orientation
-                val matrix = Matrix()
-                val sensorOrientation = cameraManager.getCameraCharacteristics(cameraId)
-                    .get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
-                val deviceRotation = when (windowManager.defaultDisplay.rotation) {
-                    Surface.ROTATION_0 -> 0
-                    Surface.ROTATION_90 -> 90
-                    Surface.ROTATION_180 -> 180
-                    Surface.ROTATION_270 -> 270
-                    else -> 0
-                }
-                val finalRotation =
-                    (sensorOrientation + deviceRotation + if (isFrontCamera) 180 else 0) % 360
-                matrix.postRotate(finalRotation.toFloat())
+                    val matrix = Matrix()
+                    if (isFrontCamera) {
+                        matrix.postRotate(270f)
+                        matrix.postScale(
+                            -1f,
+                            1f,
+                            originalBitmap.width / 2f,
+                            originalBitmap.height / 2f
+                        )
+                    } else {
+                        matrix.postRotate(90f)
+                    }
 
-                if (isFrontCamera) {
-                    matrix.postScale(-1f, 1f, originalBitmap.width / 2f, originalBitmap.height / 2f)
-                }
+                    val rotatedBitmap = Bitmap.createBitmap(
+                        originalBitmap, 0, 0,
+                        originalBitmap.width, originalBitmap.height,
+                        matrix, true
+                    )
 
-                val rotatedBitmap = Bitmap.createBitmap(
-                    originalBitmap, 0, 0,
-                    originalBitmap.width, originalBitmap.height,
-                    matrix, true
-                )
+                    val previewWidth = binding.previewView.width.toFloat()
+                    val previewHeight = binding.previewView.height.toFloat()
+                    val previewAspectRatio = previewWidth / previewHeight
 
-                FileOutputStream(file).use { out ->
-                    rotatedBitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
-                }
+                    val bitmapWidth = rotatedBitmap.width
+                    val bitmapHeight = rotatedBitmap.height
+                    val bitmapAspectRatio = bitmapWidth.toFloat() / bitmapHeight
 
-                runOnUiThread {
-                    Toast.makeText(this, "Photo saved successfully!", Toast.LENGTH_SHORT).show()
-                    updateMediaThumbnail(file)
-                    invalidateMedia(file.path)
-                    turnFlashOff(this)
+                    val croppedBitmap = if (bitmapAspectRatio > previewAspectRatio) {
+                        // Crop left and right
+                        val targetWidth = (bitmapHeight * previewAspectRatio).toInt()
+                        val xOffset = (bitmapWidth - targetWidth) / 2
+                        Bitmap.createBitmap(rotatedBitmap, xOffset, 0, targetWidth, bitmapHeight)
+                    } else {
+                        // Crop top and bottom
+                        val targetHeight = (bitmapWidth / previewAspectRatio).toInt()
+                        val yOffset = (bitmapHeight - targetHeight) / 2
+                        Bitmap.createBitmap(rotatedBitmap, 0, yOffset, bitmapWidth, targetHeight)
+                    }
 
-                    val photoUri = Uri.fromFile(file)
-                    Glide.with(this@MainActivity)
-                        .load(photoUri)
-                        .into(binding.media)
+                    FileOutputStream(file).use { out ->
+                        croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
+                    }
 
-                    binding.progressBar.visibility = View.GONE
-                    binding.capture.visibility = View.VISIBLE
-                    binding.capture.isEnabled = true
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Photo saved successfully!",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        updateMediaThumbnail(file)
+                        invalidateMedia(file.path)
+                        turnFlashOff(this@MainActivity)
+
+                        val photoUri = Uri.fromFile(file)
+                        Glide.with(this@MainActivity)
+                            .load(photoUri)
+                            .into(binding.media)
+
+                        binding.capture.isEnabled = true
+                        binding.progressBar.visibility = View.GONE
+                        binding.capture.visibility = View.VISIBLE
+                    }
                 }
             }
         }, null)
@@ -955,38 +943,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun getOptimalCaptureSize(): Size {
-        val manager = getSystemService(CAMERA_SERVICE) as CameraManager
-        val characteristics = manager.getCameraCharacteristics(cameraId)
-        val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
-
-        // Get all possible JPEG sizes
-        val jpegSizes = map.getOutputSizes(ImageFormat.JPEG)
-
-        // Get display size
-        val displayMetrics = DisplayMetrics()
-        windowManager.defaultDisplay.getMetrics(displayMetrics)
-        val screenWidth = displayMetrics.widthPixels
-        val screenHeight = displayMetrics.heightPixels
-
-        // Find the smallest size that's larger than the screen
-        return jpegSizes.filter { it.width >= screenWidth && it.height >= screenHeight }
-            .minByOrNull { it.width * it.height } ?: jpegSizes[0]
-    }
-
     private fun takePictureNow(file: File) {
         try {
             val captureRequestBuilder =
                 cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
             captureRequestBuilder.addTarget(imageReader.surface)
 
-            // ✅ Apply current zoom from preview (important for matching view)
+            // Apply current zoom from preview
             val currentCropRegion = previewRequestBuilder.get(CaptureRequest.SCALER_CROP_REGION)
             currentCropRegion?.let {
                 captureRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, it)
             }
 
-            // ✅ Apply flash if needed
+            // ✅ No JPEG_ORIENTATION needed (we're rotating manually now)
             if (flash == 1 && !isFrontCamera) {
                 captureRequestBuilder.set(
                     CaptureRequest.FLASH_MODE,
@@ -994,40 +963,11 @@ class MainActivity : AppCompatActivity() {
                 )
             }
 
-            // ✅ Trigger autofocus for sharper stills
-            captureRequestBuilder.set(
-                CaptureRequest.CONTROL_AF_MODE,
-                CaptureRequest.CONTROL_AF_MODE_AUTO
-            )
-            captureRequestBuilder.set(
-                CaptureRequest.CONTROL_AF_TRIGGER,
-                CameraMetadata.CONTROL_AF_TRIGGER_START
-            )
-
-            // ❌ Don't set JPEG_ORIENTATION since we rotate the bitmap manually after capture
-
             captureSession?.capture(
                 captureRequestBuilder.build(),
-                object : CameraCaptureSession.CaptureCallback() {
-                    override fun onCaptureCompleted(
-                        session: CameraCaptureSession,
-                        request: CaptureRequest,
-                        result: TotalCaptureResult
-                    ) {
-                        Log.i("CameraCapture", "Photo captured successfully.")
-                    }
-
-                    override fun onCaptureFailed(
-                        session: CameraCaptureSession,
-                        request: CaptureRequest,
-                        failure: CaptureFailure
-                    ) {
-                        Log.e("CameraCapture", "Photo capture failed: ${failure.reason}")
-                    }
-                },
+                object : CameraCaptureSession.CaptureCallback() {},
                 null
             )
-
         } catch (e: Exception) {
             Log.e("CameraCapture", "Error capturing photo", e)
             Toast.makeText(this, "Failed to capture photo", Toast.LENGTH_SHORT).show()
@@ -1288,7 +1228,6 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         Log.i("TAG", "camera: " + "onresumecamera")
 
-//        binding.pathUi.visibility = View.GONE
         if (binding.folder.text.isNotBlank()) {
             binding.toast.text = "Selected folder: ${binding.folder.text}"
             binding.toast.visibility = View.VISIBLE
