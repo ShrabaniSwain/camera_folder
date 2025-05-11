@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.os.Environment
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
@@ -11,6 +12,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.app.camerademo.databinding.ActivityFolderBinding
 import com.app.camerademo.databinding.ItemFolderBinding
+import com.bumptech.glide.Glide
 import java.io.File
 
 class FolderActivity : AppCompatActivity() {
@@ -24,6 +26,7 @@ class FolderActivity : AppCompatActivity() {
     private val adapter by lazy {
         MyAdapter()
     }
+    private var isFirstLoad = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,8 +42,7 @@ class FolderActivity : AppCompatActivity() {
         folders.addAll(pref.getStringSet("date_folders", setOf()) ?: setOf())
         folders.sort()
         folders.forEach { lastFile(it) }
-        val layoutManager = GridLayoutManager(this, 1)
-        binding.list.layoutManager = layoutManager
+        binding.list.layoutManager = GridLayoutManager(this, 3)
         binding.list.adapter = adapter
     }
 
@@ -67,18 +69,38 @@ class FolderActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: MyViewHolder, position: Int) {
             val item = folders[holder.absoluteAdapterPosition]
-            holder.binding.text.text = item
+            holder.binding.folderName.text = item
 
+            val folderPath = parents[item]
+            val folderFile = folderPath?.let { File(it) }
+            val imageFile = folderFile?.listFiles()?.filter { it.isFile }?.maxByOrNull { it.lastModified() }
+            if (imageFile != null) {
+                Glide.with(this@FolderActivity)
+                    .load(imageFile)
+                    .centerCrop()
+                    .into(holder.binding.folderImage)
+            }
 
             holder.itemView.setOnClickListener {
-                val intent = Intent(this@FolderActivity, PreviewActivity::class.java)
+                val intent = Intent(this@FolderActivity, TilesFolderViewActivity::class.java)
                 intent.putExtra("path", parents[item])
-                intent.putExtra("hide", true)
+                intent.putExtra("hide", true)// Pass folder path
                 startActivity(intent)
+                Log.d("FolderActivity", "Opening folder path: ${parents[item]}")
             }
 
         }
 
     }
+
+    override fun onResume() {
+        super.onResume()
+        if (!isFirstLoad) {
+            loadFolder()
+        }
+        isFirstLoad = false
+    }
+
+
 
 }

@@ -40,6 +40,10 @@
             android:configChanges="keyboardHidden|orientation|screenSize"
             android:exported="false" />
         <activity
+            android:name=".TilesFolderViewActivity"
+            android:configChanges="keyboardHidden|orientation|screenSize"
+            android:exported="false" />
+        <activity
             android:name=".PreviewActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
             android:exported="false"

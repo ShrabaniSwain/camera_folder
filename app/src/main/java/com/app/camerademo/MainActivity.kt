@@ -375,6 +375,7 @@ class MainActivity : AppCompatActivity() {
             path = ""
             binding.mediaPreview.visibility = View.INVISIBLE
             binding.newFolder.setText("")
+            binding.newFolder.hint = "+ Create New Folder"
             binding.folder.text = path
             binding.chooseFolder.visibility = View.GONE
             binding.pathUi.visibility = View.VISIBLE
@@ -1320,7 +1321,11 @@ class MainActivity : AppCompatActivity() {
 
         // Apply zoom crop region
         previewRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, zoomRect)
-        captureSession?.setRepeatingRequest(previewRequestBuilder.build(), null, null)
+        try {
+            captureSession?.setRepeatingRequest(previewRequestBuilder.build(), null, null)
+        } catch (e: IllegalStateException) {
+            Log.e("CameraZoom", "Skipping zoom because camera is closed", e)
+        }
     }
 
 
