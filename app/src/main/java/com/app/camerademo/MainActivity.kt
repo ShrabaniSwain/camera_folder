@@ -219,7 +219,6 @@ class MainActivity : AppCompatActivity() {
             if (lastPath.isBlank() || binding.mediaPreview.isInvisible) return@setOnClickListener
             val intent = Intent(this, PreviewActivity::class.java)
             intent.putExtra("path", File(lastPath).parent)
-            intent.putExtra("isFrontCamera", isFrontCamera) // 👈 Add this
             startActivity(intent)
         }
 
@@ -664,12 +663,6 @@ class MainActivity : AppCompatActivity() {
         try {
             // 1. Setup MediaRecorder with lower quality for compatibility
             setupMediaRecorder()
-
-//            val texture = binding.previewView.surfaceTexture?.apply {
-//                setDefaultBufferSize(previewSize.width, previewSize.height)
-//            }
-//            val previewSurface = Surface(texture)
-
             val recordSurface = mediaRecorder.surface
 
             // 2. Create capture request
@@ -789,7 +782,7 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this, "Video saved successfully!", Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) {
                     Log.e("CameraDemo", "Error stopping recording", e)
-                    Toast.makeText(this, "Error saving video", Toast.LENGTH_SHORT).show()
+//                    Toast.makeText(this, "Error saving video", Toast.LENGTH_SHORT).show()
                 }
             }
         } finally {
@@ -831,72 +824,94 @@ class MainActivity : AppCompatActivity() {
             lifecycleScope.launch(Dispatchers.IO) {
                 image.use {
                     val buffer = it.planes[0].buffer
-                    val bytes = ByteArray(buffer.remaining())
-                    buffer.get(bytes)
-                    // === ✅ Crop to match preview aspect ratio ===
-                    val originalBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    val rawBytes = ByteArray(buffer.remaining())
+                    buffer.get(rawBytes)
 
-                    val matrix = Matrix()
-                    if (isFrontCamera) {
-                        matrix.postRotate(270f)
-                        matrix.postScale(
-                            -1f,
-                            1f,
-                            originalBitmap.width / 2f,
-                            originalBitmap.height / 2f
-                        )
-                    } else {
-                        matrix.postRotate(90f)
-                    }
-
-                    val rotatedBitmap = Bitmap.createBitmap(
-                        originalBitmap, 0, 0,
-                        originalBitmap.width, originalBitmap.height,
-                        matrix, true
-                    )
-
-                    val previewWidth = binding.previewView.width.toFloat()
-                    val previewHeight = binding.previewView.height.toFloat()
-                    val previewAspectRatio = previewWidth / previewHeight
-
-                    val bitmapWidth = rotatedBitmap.width
-                    val bitmapHeight = rotatedBitmap.height
-                    val bitmapAspectRatio = bitmapWidth.toFloat() / bitmapHeight
-
-                    val croppedBitmap = if (bitmapAspectRatio > previewAspectRatio) {
-                        // Crop left and right
-                        val targetWidth = (bitmapHeight * previewAspectRatio).toInt()
-                        val xOffset = (bitmapWidth - targetWidth) / 2
-                        Bitmap.createBitmap(rotatedBitmap, xOffset, 0, targetWidth, bitmapHeight)
-                    } else {
-                        // Crop top and bottom
-                        val targetHeight = (bitmapWidth / previewAspectRatio).toInt()
-                        val yOffset = (bitmapHeight - targetHeight) / 2
-                        Bitmap.createBitmap(rotatedBitmap, 0, yOffset, bitmapWidth, targetHeight)
-                    }
-
+                    // ✅ Save raw image immediately for fast capture experience
                     FileOutputStream(file).use { out ->
-                        croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
+                        out.write(rawBytes)
                     }
 
+                    // ✅ Update UI immediately after saving
                     withContext(Dispatchers.Main) {
                         Toast.makeText(
                             this@MainActivity,
                             "Photo saved successfully!",
                             Toast.LENGTH_SHORT
                         ).show()
-                        updateMediaThumbnail(file)
-                        invalidateMedia(file.path)
-                        turnFlashOff(this@MainActivity)
-
-                        val photoUri = Uri.fromFile(file)
-                        Glide.with(this@MainActivity)
-                            .load(photoUri)
-                            .into(binding.media)
 
                         binding.capture.isEnabled = true
                         binding.progressBar.visibility = View.GONE
                         binding.capture.visibility = View.VISIBLE
+                    }
+
+                    try {
+                        val originalBitmap =
+                            BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size)
+
+                        val matrix = Matrix()
+                        if (isFrontCamera) {
+                            matrix.postRotate(270f)
+                            matrix.postScale(
+                                -1f,
+                                1f,
+                                originalBitmap.width / 2f,
+                                originalBitmap.height / 2f
+                            )
+                        } else {
+                            matrix.postRotate(90f)
+                        }
+
+                        val rotatedBitmap = Bitmap.createBitmap(
+                            originalBitmap, 0, 0,
+                            originalBitmap.width, originalBitmap.height,
+                            matrix, true
+                        )
+
+                        val previewWidth = binding.previewView.width.toFloat()
+                        val previewHeight = binding.previewView.height.toFloat()
+                        val previewAspectRatio = previewWidth / previewHeight
+
+                        val bitmapWidth = rotatedBitmap.width
+                        val bitmapHeight = rotatedBitmap.height
+                        val bitmapAspectRatio = bitmapWidth.toFloat() / bitmapHeight
+
+                        val croppedBitmap = if (bitmapAspectRatio > previewAspectRatio) {
+                            val targetWidth = (bitmapHeight * previewAspectRatio).toInt()
+                            val xOffset = (bitmapWidth - targetWidth) / 2
+                            Bitmap.createBitmap(
+                                rotatedBitmap,
+                                xOffset,
+                                0,
+                                targetWidth,
+                                bitmapHeight
+                            )
+                        } else {
+                            val targetHeight = (bitmapWidth / previewAspectRatio).toInt()
+                            val yOffset = (bitmapHeight - targetHeight) / 2
+                            Bitmap.createBitmap(
+                                rotatedBitmap,
+                                0,
+                                yOffset,
+                                bitmapWidth,
+                                targetHeight
+                            )
+                        }
+
+                        FileOutputStream(file).use { out ->
+                            croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
+                        }
+
+                        withContext(Dispatchers.Main) {
+                            updateMediaThumbnail(file)
+                            invalidateMedia(file.path)
+                            Glide.with(this@MainActivity).load(Uri.fromFile(file))
+                                .into(binding.media)
+                            turnFlashOff(this@MainActivity)
+                        }
+
+                    } catch (e: Exception) {
+                        Log.e("ImageProcessing", "Error processing image", e)
                     }
                 }
             }
@@ -924,7 +939,7 @@ class MainActivity : AppCompatActivity() {
                         if (flash == 1 && isFrontCamera) {
                             binding.frontFlashOverlay.visibility = View.GONE
                         }
-                        takePictureNow(file)
+                        takePictureNow()
                     }, if (flash == 1) 500 else 0)
                 }
 
@@ -944,19 +959,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun takePictureNow(file: File) {
+
+    private fun takePictureNow() {
         try {
             val captureRequestBuilder =
                 cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
             captureRequestBuilder.addTarget(imageReader.surface)
 
-            // Apply current zoom from preview
             val currentCropRegion = previewRequestBuilder.get(CaptureRequest.SCALER_CROP_REGION)
             currentCropRegion?.let {
                 captureRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, it)
             }
 
-            // ✅ No JPEG_ORIENTATION needed (we're rotating manually now)
             if (flash == 1 && !isFrontCamera) {
                 captureRequestBuilder.set(
                     CaptureRequest.FLASH_MODE,
@@ -1081,12 +1095,7 @@ class MainActivity : AppCompatActivity() {
             .load(file)
             .centerCrop()
             .into(binding.media)
-
-        if (isFrontCamera && file.name.endsWith(".mp4", true)) {
-            binding.media.scaleX = -1f
-        } else {
-            binding.media.scaleX = 1f
-        }
+        binding.media.scaleX = if (isFrontCamera && file.name.endsWith(".mp4", true)) -1f else 1f
 
     }
 
@@ -1134,27 +1143,34 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-
     private fun setupVideoPreviewSession() {
         try {
             val texture = binding.previewView.surfaceTexture!!
             texture.setDefaultBufferSize(previewSize.width, previewSize.height)
             previewSurface = Surface(texture)
 
+            prepareMediaRecorderPreviewOnly()
+            val recordSurface = mediaRecorder.surface
+
             previewRequestBuilder =
-                cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
+                cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
                     addTarget(previewSurface)
+                    addTarget(recordSurface)
+                    set(
+                        CaptureRequest.CONTROL_AF_MODE,
+                        CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO
+                    )
                 }
 
             cameraDevice!!.createCaptureSession(
-                listOf(previewSurface),
+                listOf(previewSurface, recordSurface),
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(session: CameraCaptureSession) {
                         captureSession = session
                         try {
                             session.setRepeatingRequest(previewRequestBuilder.build(), null, null)
                         } catch (e: Exception) {
-                            Log.e("CameraDemo", "Failed to start preview in video mode", e)
+                            Log.e("CameraDemo", "Failed to start video preview", e)
                         }
                     }
 
@@ -1170,6 +1186,37 @@ class MainActivity : AppCompatActivity() {
             )
         } catch (e: Exception) {
             Log.e("CameraDemo", "Error setting up video preview", e)
+        }
+    }
+
+    private fun prepareMediaRecorderPreviewOnly() {
+        if (::mediaRecorder.isInitialized) {
+            mediaRecorder.release()
+        }
+
+        mediaRecorder = MediaRecorder().apply {
+            setAudioSource(MediaRecorder.AudioSource.CAMCORDER)
+            setVideoSource(MediaRecorder.VideoSource.SURFACE)
+            setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+
+            // Use a dummy output that is immediately discarded
+            val dummyPath = File(cacheDir, "dummy_preview.mp4").absolutePath
+            setOutputFile(dummyPath)
+
+            setVideoEncodingBitRate(5_000_000)
+            setVideoFrameRate(24)
+            setVideoSize(1280, 720)
+            setVideoEncoder(MediaRecorder.VideoEncoder.H264)
+            setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            setAudioEncodingBitRate(128000)
+            setAudioSamplingRate(44100)
+            setOrientationHint(if (!isFrontCamera) 90 else 270)
+
+            try {
+                prepare()
+            } catch (e: Exception) {
+                Log.e("CameraDemo", "MediaRecorder preview prepare failed", e)
+            }
         }
     }
 
@@ -1352,8 +1399,6 @@ class MainActivity : AppCompatActivity() {
             startCamera()
         }
 
-
-    // Replace your existing configureTransform method with this improved version:
     private fun configureTransform(viewWidth: Int, viewHeight: Int) {
         val matrix = Matrix()
         val rotation = windowManager.defaultDisplay.rotation

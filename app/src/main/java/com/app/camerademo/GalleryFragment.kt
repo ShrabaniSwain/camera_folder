@@ -80,9 +80,17 @@ class GalleryFragment : Fragment() {
 
     private fun videoSetup() {
         val data = requireArguments().getString("path") ?: ""
-        val isFront = requireArguments().getBoolean("isFrontCamera", false) // 👈 Read here
+        val isFront = File(data).name.contains("FRONT_VID", ignoreCase = true)
 
-        binding.playerPreview.scaleX = if (isFront) -1f else 1f // 👈 Mirror preview if front cam
+//        binding.playerPreview.scaleX = if (isFront) -1f else 1f // 👈 Mirror preview if front cam
+        if (isFront) {
+            // ✅ Mirror only the video rendering surface
+            val videoSurfaceView = binding.playerPreview.videoSurfaceView
+            videoSurfaceView?.scaleX = -1f
+        } else {
+            val videoSurfaceView = binding.playerPreview.videoSurfaceView
+            videoSurfaceView?.scaleX = 1f
+        }
 
         binding.playerPreview.hideController()
         binding.playerPreview.controllerShowTimeoutMs = 1500

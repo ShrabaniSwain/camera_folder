@@ -12,8 +12,8 @@ android {
         applicationId = "com.camfolder"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "3.0"
+        versionCode = 10001
+        versionName = "1.0.01.12052025.10001"
     }
 
     buildTypes {
@@ -49,12 +49,6 @@ dependencies {
 // Video recording
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.camera:camera-core:1.4.2")
-
-//    val cameraxVersion = "1.4.1"
-//    implementation("androidx.camera:camera-core:$cameraxVersion")
-//    implementation("androidx.camera:camera-camera2:$cameraxVersion")
-//    implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
-//    implementation("androidx.camera:camera-video:$cameraxVersion")
 
     val exoplayerVersion = "2.18.6"
     implementation("com.google.android.exoplayer:exoplayer:$exoplayerVersion")
