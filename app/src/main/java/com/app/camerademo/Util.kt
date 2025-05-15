@@ -17,4 +17,13 @@ object Util {
         println("time: $time")
     }
 
+    //Live
+//    const val Interstitial_Ad_ID = "ca-app-pub-8665801057843551/3988955668"
+//    const val APP_OPEN_AD_UNIT_ID = "ca-app-pub-8665801057843551/7529579575"
+
+    //Test
+//    const val BANNER_AD_UNIT_ID = "ca-app-pub-3940256099942544/6300978111"
+    const val Interstitial_Ad_ID = "ca-app-pub-3940256099942544/1033173712"
+//    const val APP_OPEN_AD_UNIT_ID = "ca-app-pub-3940256099942544/3419835294"
+
 }

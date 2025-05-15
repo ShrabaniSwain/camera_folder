@@ -82,7 +82,6 @@ class GalleryFragment : Fragment() {
         val data = requireArguments().getString("path") ?: ""
         val isFront = File(data).name.contains("FRONT_VID", ignoreCase = true)
 
-//        binding.playerPreview.scaleX = if (isFront) -1f else 1f // 👈 Mirror preview if front cam
         if (isFront) {
             // ✅ Mirror only the video rendering surface
             val videoSurfaceView = binding.playerPreview.videoSurfaceView

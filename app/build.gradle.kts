@@ -12,8 +12,8 @@ android {
         applicationId = "com.camfolder"
         minSdk = 26
         targetSdk = 34
-        versionCode = 10001
-        versionName = "1.0.01.12052025.10001"
+        versionCode = 10002
+        versionName = "1.0.02.14052025.10002"
     }
 
     buildTypes {
@@ -22,6 +22,17 @@ android {
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
+            )
+        }
+    }
+    packaging {
+        resources {
+            excludes += listOf(
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.txt",
+                "META-INF/NOTICE",
+                "META-INF/NOTICE.txt"
             )
         }
     }
@@ -49,6 +60,7 @@ dependencies {
 // Video recording
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.camera:camera-core:1.4.2")
+    implementation("androidx.lifecycle:lifecycle-process:2.9.0")
 
     val exoplayerVersion = "2.18.6"
     implementation("com.google.android.exoplayer:exoplayer:$exoplayerVersion")
@@ -63,5 +75,11 @@ dependencies {
 //    implementation("androidx.camera:camera-extensions:$cameraxVersion")
 
     implementation("com.github.evgenyneu:js-evaluator-for-android:v6.0.0")
+    implementation("com.google.android.gms:play-services-ads:23.0.0")
+
+    implementation("com.google.api-client:google-api-client:2.2.0")
+    implementation("com.google.oauth-client:google-oauth-client-jetty:1.34.1")
+    implementation("com.google.apis:google-api-services-drive:v3-rev20220815-2.0.0")
+
 
 }

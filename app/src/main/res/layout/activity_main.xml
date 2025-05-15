@@ -350,7 +350,6 @@
                     android:layout_gravity="center"
                     android:layout_marginHorizontal="20dp"
                     android:layout_marginVertical="8dp"
-                    android:visibility="gone"
                     android:background="@drawable/camera_box_background">
 
                     <TextView
