@@ -32,24 +32,32 @@ class PreviewActivity : AppCompatActivity() {
 
     private fun load() {
         val path = intent.getStringExtra("path") ?: ""
+        val selectedFile = intent.getStringExtra("selectedFile")
         Log.i("PreviewActivity", "Path $path")
 
         Thread {
             allFiles.clear()
             files.clear()
 
-            val folder = File(path)
-            val kFiles = folder.listFiles() ?: arrayOf()
-            kFiles.sortByDescending { it.lastModified() }
+            // ✅ Detect if we're previewing Drive media
+            val isDriveMode = path.contains("Drive")
 
-            val mediaFiles = kFiles.filter {
-                it.extension.lowercase() in listOf("jpg", "jpeg", "mp4")
+            // ✅ Choose the correct folder
+            val folder = if (isDriveMode) {
+                File(getExternalFilesDir("videos") ?: filesDir, "")
+            } else {
+                File(path)
             }
 
-            allFiles.addAll(mediaFiles)
-            files.addAll(mediaFiles.map { it.absolutePath })
+            // ✅ Load and filter media files
+            val kFiles = folder.listFiles()?.filter {
+                it.extension.lowercase() in listOf("jpg", "jpeg", "mp4") &&
+                        (it.length() > 100 * 1024 || !it.name.endsWith(".mp4")) // Skip small/broken videos
+            }?.sortedByDescending { it.lastModified() } ?: listOf()
 
-            val selectedFile = intent.getStringExtra("selectedFile")
+            allFiles.addAll(kFiles)
+            files.addAll(kFiles.map { it.absolutePath })
+
             val index = files.indexOf(selectedFile)
 
             Handler(Looper.getMainLooper()).post {

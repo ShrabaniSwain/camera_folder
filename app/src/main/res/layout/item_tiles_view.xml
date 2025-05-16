@@ -15,4 +15,18 @@
         app:layout_constraintTop_toTopOf="parent"
         android:scaleType="fitXY"
         />
+
+    <ImageView
+        android:id="@+id/playIcon"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:scaleType="fitXY"
+        android:src="@drawable/baseline_play_circle_24"
+        android:visibility="visible"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:contentDescription="Video icon"/>
+
 </androidx.constraintlayout.widget.ConstraintLayout>

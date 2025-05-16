@@ -2,6 +2,7 @@ package com.app.camerademo
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
@@ -58,6 +59,18 @@ import java.util.Calendar
 import androidx.core.view.isInvisible
 import androidx.core.content.edit
 import androidx.lifecycle.lifecycleScope
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.common.api.Scope
+import com.google.android.gms.tasks.Task
+import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
+import com.google.api.client.http.FileContent
+import com.google.api.client.http.javanet.NetHttpTransport
+import com.google.api.client.json.gson.GsonFactory
+import com.google.api.services.drive.Drive
+import com.google.api.services.drive.DriveScopes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -110,6 +123,22 @@ class MainActivity : AppCompatActivity() {
     private var path = ""
     private var hasRecordingStarted = false
     private var wasInBackground = false
+    private var isDriveMode = false
+    private var driveFolderId: String? = null
+    private var driveClient: Drive? = null
+    private val signInLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            if (result.resultCode == Activity.RESULT_OK) {
+                val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+                handleSignInResult(task)
+            } else {
+                handleSignInResult(task)
+                Log.e("DriveUpload", "Sign-in cancelled or failed")
+            }
+        }
+
 
     @RequiresPermission(Manifest.permission.CAMERA)
     @SuppressLint("ClickableViewAccessibility")
@@ -126,7 +155,7 @@ class MainActivity : AppCompatActivity() {
         Log.i("423u5", "cache path ${cacheDir.path}")
 
         binding.capture.setOnClickListener {
-            if (path.isBlank()) return@setOnClickListener
+            if (path.isBlank()  && !isDriveMode) return@setOnClickListener
             if (isCapture) {
                 binding.capture.isEnabled = false
                 binding.progressBar.visibility = View.VISIBLE
@@ -138,7 +167,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.cameraSwitch.setOnClickListener {
-            if (path.isBlank()) return@setOnClickListener
+            if (path.isBlank() && !isDriveMode) return@setOnClickListener
             isBackCamera = !isBackCamera
             isFrontCamera = !isBackCamera
             closeCamera()
@@ -152,7 +181,7 @@ class MainActivity : AppCompatActivity() {
         binding.flash.isEnabled = false
 
         binding.flash.setOnClickListener {
-            if (path.isBlank()) return@setOnClickListener
+            if (path.isBlank() && !isDriveMode) return@setOnClickListener
 
             // Cycle flash modes: 0 = OFF, 1 = ON, 2 = AUTO (photo only)
             flash = (flash + 1) % if (isCapture) 3 else 2
@@ -216,7 +245,7 @@ class MainActivity : AppCompatActivity() {
 
 
         binding.mediaPreview.setOnClickListener {
-            if (lastPath.isBlank() || binding.mediaPreview.isInvisible) return@setOnClickListener
+            if (lastPath.isBlank() && !isDriveMode || binding.mediaPreview.isInvisible) return@setOnClickListener
             val intent = Intent(this, PreviewActivity::class.java)
             intent.putExtra("path", File(lastPath).parent)
             startActivity(intent)
@@ -261,7 +290,7 @@ class MainActivity : AppCompatActivity() {
             })
 
         binding.previewView.setOnTouchListener { _, event ->
-            if (path.isBlank()) return@setOnTouchListener false
+            if (path.isBlank() && !isDriveMode) return@setOnTouchListener false
 
             // Handle pinch-to-zoom
             scaleGestureDetector.onTouchEvent(event)
@@ -387,7 +416,107 @@ class MainActivity : AppCompatActivity() {
 
             binding.blurView.visibility = View.VISIBLE
         }
+        binding.uploadToDrive.setOnClickListener {
+            requestSignIn()
+        }
 
+
+    }
+
+    private fun requestSignIn() {
+        val signInOptions = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+            .requestScopes(Scope(DriveScopes.DRIVE_FILE))
+            .build()
+        val client = GoogleSignIn.getClient(this, signInOptions)
+        signInLauncher.launch(client.signInIntent)
+    }
+
+    private fun handleSignInResult(completedTask: Task<GoogleSignInAccount>) {
+        try {
+            val account = completedTask.getResult(ApiException::class.java)
+            Log.d("DriveUpload", "User signed in: ${account.email}")
+            Toast.makeText(this, "Signed in as ${account.email}", Toast.LENGTH_SHORT).show()
+
+            val credential = GoogleAccountCredential.usingOAuth2(
+                this, listOf(DriveScopes.DRIVE_FILE)
+            )
+            credential.selectedAccount = account.account
+
+            val driveService = Drive.Builder(
+                NetHttpTransport(),
+                GsonFactory.getDefaultInstance(),
+                credential
+            ).setApplicationName("CameraDemo").build()
+
+            // Disable UI during folder setup
+            setUiEnabled(false)
+
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val folderMetadata = com.google.api.services.drive.model.File().apply {
+                        name = "camfolder"
+                        mimeType = "application/vnd.google-apps.folder"
+                    }
+
+                    val result = driveService.files().list()
+                        .setQ("name='camfolder' and mimeType='application/vnd.google-apps.folder'")
+                        .setSpaces("drive")
+                        .execute()
+
+                    val folderId = if (result.files.isEmpty()) {
+                        driveService.files().create(folderMetadata)
+                            .setFields("id")
+                            .execute()
+                            .id
+                    } else {
+                        result.files[0].id
+                    }
+
+                    // Store drive setup state
+                    driveClient = driveService
+                    driveFolderId = folderId
+                    isDriveMode = true
+
+                    withContext(Dispatchers.Main) {
+                        selectedDCIMFolderName = "Google Drive"
+//                        // DO NOT clear path; use isDriveMode for logic separation
+                         path = ""
+                        binding.folder.text = "Drive: camfolder"
+                        binding.chooseFolder.visibility = View.VISIBLE
+                        binding.pathUi.visibility = View.GONE
+                        binding.blurView.visibility = View.GONE
+
+                        setUiEnabled(true)
+                        startPreview()
+                        saveFolder("Drive: camfolder")
+
+                        Toast.makeText(this@MainActivity, "Drive folder selected", Toast.LENGTH_SHORT).show()
+                        loadPreview()
+                    }
+
+                } catch (e: Exception) {
+                    Log.e("DriveSetup", "Failed to set up Drive folder", e)
+                    withContext(Dispatchers.Main) {
+                        setUiEnabled(true)
+                        Toast.makeText(this@MainActivity, "Drive folder setup failed", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+
+        } catch (e: ApiException) {
+            Log.e("DriveUpload", "Sign-in failed: ${e.statusCode} ${e.message}")
+            Toast.makeText(this, "Sign-in failed", Toast.LENGTH_SHORT).show()
+            setUiEnabled(true)
+        }
+    }
+
+    private fun setUiEnabled(enabled: Boolean) {
+        binding.photoClick.isEnabled = enabled
+        binding.videoClick.isEnabled = enabled
+        binding.capture.isEnabled = enabled
+        binding.cameraSwitch.isEnabled = enabled
+        binding.flash.isEnabled = enabled
     }
 
     private fun switchModeUI() {
@@ -536,6 +665,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         for (x in folders) {
+            if (x == "Drive: camfolder") continue
             val text = TextView(this)
             val lp = LinearLayout.LayoutParams(-1, toPx(47).toInt())
             lp.setMargins(toPx(20).toInt(), toPx(8).toInt(), toPx(20).toInt(), toPx(8).toInt())
@@ -567,15 +697,42 @@ class MainActivity : AppCompatActivity() {
     )
 
     private fun onFolderSelect(folder: String) {
+        if (folder.startsWith("Drive:")) {
+            isDriveMode = true
+
+            if (driveFolderId == null) {
+                // 🚨 Drive not set up yet, prompt login again
+                Toast.makeText(this, "Please sign in to Drive to use this folder", Toast.LENGTH_SHORT).show()
+                requestSignIn()
+                return
+            }
+
+            // ✅ Setup Drive mode
+            selectedDCIMFolderName = folder
+            binding.folder.text = folder
+            binding.chooseFolder.visibility = View.VISIBLE
+            binding.pathUi.visibility = View.GONE
+            binding.blurView.visibility = View.GONE
+
+            setUiEnabled(true)
+            startPreview()
+            loadPreview() // ✅ Ensure preview loads from internal storage (/videos)
+            return
+        }
+
+        // ✅ Local folder selection logic
+        isDriveMode = false
         path = if (folder == "DCIM/Camera") {
             "storage/emulated/0/$folder/"
         } else {
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).path + "/$folder/"
         }
-        if (File(path).exists().not()) {
+
+        if (!File(path).exists()) {
             Log.i("423u5", "path created ${File(path).mkdirs()}")
         }
 
+        // Hide keyboard if visible
         currentFocus?.let {
             val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
             imm.hideSoftInputFromWindow(it.windowToken, 0)
@@ -586,12 +743,7 @@ class MainActivity : AppCompatActivity() {
         binding.pathUi.visibility = View.GONE
         binding.blurView.visibility = View.GONE
 
-        binding.photoClick.isEnabled = true
-        binding.videoClick.isEnabled = true
-        binding.capture.isEnabled = true
-        binding.flash.isEnabled = true
-        binding.cameraSwitch.isEnabled = true
-
+        setUiEnabled(true)
         loadPreview()
     }
 
@@ -611,7 +763,17 @@ class MainActivity : AppCompatActivity() {
         data.add(name)
         data.addAll(folders)
         pref.edit { putStringSet("folders", data) }
-        onFolderSelect(name)
+
+        if (name.startsWith("Drive:")) {
+            // Save flag to SharedPreferences so we know it's Drive next time
+            getSharedPreferences(packageName, Context.MODE_PRIVATE).edit {
+                putBoolean("has_drive_folder", true)
+            }
+        }
+        else{
+            onFolderSelect(name)
+
+        }
     }
 
     private fun saveDateFolder(name: String) {
@@ -626,16 +788,27 @@ class MainActivity : AppCompatActivity() {
     private fun loadPreview() {
         Log.i("423u5", "> ${System.currentTimeMillis()}")
         Thread {
-            val files = File(path).listFiles()
-            files?.sortByDescending { x -> x.lastModified() }
-            val file = files?.firstOrNull()
-            Handler(Looper.getMainLooper()).post {
-                file?.let { x ->
-                    lastPath = x.path
-                    binding.mediaPreview.visibility = View.VISIBLE
-                    Glide.with(this@MainActivity).load(x.path).into(binding.media)
+            val previewDir = if (isDriveMode) {
+                File(getExternalFilesDir("videos") ?: filesDir, "")
+            } else {
+                File(path)
+            }
+
+            val files = previewDir.listFiles()
+                ?.filter {
+                    it.extension.lowercase() in listOf("jpg", "jpeg", "mp4") &&
+                            (it.length() > 100 * 1024 || !it.name.endsWith(".mp4")) // Skip small/corrupt videos
                 }
-                if (File(lastPath).exists().not()) {
+                ?.sortedByDescending { it.lastModified() }
+
+            val file = files?.firstOrNull()
+
+            Handler(Looper.getMainLooper()).post {
+                if (file != null && file.exists()) {
+                    lastPath = file.path
+                    binding.mediaPreview.visibility = View.VISIBLE
+                    Glide.with(this@MainActivity).load(file.path).into(binding.media)
+                } else {
                     binding.mediaPreview.visibility = View.INVISIBLE
                 }
             }
@@ -657,8 +830,15 @@ class MainActivity : AppCompatActivity() {
         } else {
             "BACK_VID_${System.currentTimeMillis()}.mp4"
         }
-        videoFile = File(path, videoFileName)
 
+        val storageDir = if (isDriveMode) {
+            File(getExternalFilesDir(null), "videos")
+        } else {
+            File(path)
+        }
+        if (!storageDir.exists()) storageDir.mkdirs()
+
+        videoFile = File(storageDir, videoFileName)
 
         try {
             // 1. Setup MediaRecorder with lower quality for compatibility
@@ -799,6 +979,26 @@ class MainActivity : AppCompatActivity() {
                 if (it.exists() && it.length() > 0) {
                     updateMediaThumbnail(it)
                     invalidateMedia(it.absolutePath)
+
+                    // ✅ Added: Upload to Google Drive if enabled
+                    if (isDriveMode && driveClient != null && driveFolderId != null) {
+                        val fileMetadata = com.google.api.services.drive.model.File().apply {
+                            name = it.name
+                            parents = listOf(driveFolderId!!)
+                        }
+
+                        val mediaContent = FileContent("video/mp4", it)
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            try {
+                                driveClient!!.files().create(fileMetadata, mediaContent)
+                                    .setFields("id")
+                                    .execute()
+                                Log.d("DriveUpload", "Video uploaded to Drive: ${it.name}")
+                            } catch (e: Exception) {
+                                Log.e("DriveUpload", "Video upload to Drive failed", e)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -808,12 +1008,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun capturePhoto() {
-        if (path.isBlank()) {
+        if (path.isBlank() && !isDriveMode) {
             Toast.makeText(this, "Please select a folder first", Toast.LENGTH_SHORT).show()
             return
         }
 
-        val file = File(path, "IMG_${System.currentTimeMillis()}.jpg")
+        val file = if (isDriveMode) {
+            val storageDir = File(getExternalFilesDir(null), "videos")
+            if (!storageDir.exists()) storageDir.mkdirs()
+            File(storageDir, "IMG_${System.currentTimeMillis()}.jpg")
+        } else {
+            File(path, "IMG_${System.currentTimeMillis()}.jpg")
+        }
+
         lastPath = file.absolutePath
 
         imageReader =
@@ -908,6 +1115,19 @@ class MainActivity : AppCompatActivity() {
                             Glide.with(this@MainActivity).load(Uri.fromFile(file))
                                 .into(binding.media)
                             turnFlashOff(this@MainActivity)
+                        }
+
+                        if (isDriveMode && driveClient != null && driveFolderId != null) {
+                            val fileMetadata = com.google.api.services.drive.model.File().apply {
+                                name = file.name
+                                parents = listOf(driveFolderId!!)
+                            }
+
+                            val mediaContent = FileContent("image/jpeg", file)
+                            driveClient!!.files().create(fileMetadata, mediaContent)
+                                .setFields("id")
+                                .execute()
+                            Log.d("DriveUpload", "Photo uploaded to Drive: ${file.name}")
                         }
 
                     } catch (e: Exception) {

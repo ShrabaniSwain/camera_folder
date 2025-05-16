@@ -2,6 +2,7 @@ package com.app.camerademo
 
 import android.util.Log
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.app.camerademo.databinding.ItemTilesViewBinding
@@ -34,11 +35,14 @@ class TilesImageAdapter(
                 .frame(1000000) // get frame at 1 second
                 .centerCrop()
                 .into(holder.binding.folderImage)
+            holder.binding.playIcon.visibility = View.VISIBLE
         } else {
             glideRequest
                 .load(file)
                 .centerCrop()
                 .into(holder.binding.folderImage)
+
+            holder.binding.playIcon.visibility = View.GONE
         }
 
         holder.itemView.setOnClickListener {

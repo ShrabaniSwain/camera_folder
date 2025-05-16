@@ -1,0 +1,20 @@
+{
+  "version": 3,
+  "artifactType": {
+    "type": "APK",
+    "kind": "Directory"
+  },
+  "applicationId": "com.camfolder",
+  "variantName": "release",
+  "elements": [
+    {
+      "type": "SINGLE",
+      "filters": [],
+      "attributes": [],
+      "versionCode": 10002,
+      "versionName": "1.0.02.14052025.10002",
+      "outputFile": "app-release.apk"
+    }
+  ],
+  "elementType": "File"
+}

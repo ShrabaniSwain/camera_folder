@@ -47,9 +47,15 @@ class FolderActivity : AppCompatActivity() {
     }
 
     private fun lastFile(folder: String) {
-        val file = File("${Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)}/$folder/")
+        val file = if (folder.startsWith("Drive:")) {
+            // 🔄 Point to internal app folder where media is saved before Drive upload
+            File(getExternalFilesDir("videos") ?: filesDir, "")
+        } else {
+            File("${Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)}/$folder/")
+        }
         parents[folder] = file.absolutePath
     }
+
 
     inner class MyAdapter: RecyclerView.Adapter<MyAdapter.MyViewHolder>() {
 
@@ -84,6 +90,7 @@ class FolderActivity : AppCompatActivity() {
             holder.itemView.setOnClickListener {
                 val intent = Intent(this@FolderActivity, TilesFolderViewActivity::class.java)
                 intent.putExtra("path", parents[item])
+                intent.putExtra("folderName", item)
                 intent.putExtra("hide", true)// Pass folder path
                 startActivity(intent)
                 Log.d("FolderActivity", "Opening folder path: ${parents[item]}")

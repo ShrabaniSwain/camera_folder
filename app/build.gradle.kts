@@ -12,8 +12,8 @@ android {
         applicationId = "com.camfolder"
         minSdk = 26
         targetSdk = 34
-        versionCode = 10002
-        versionName = "1.0.02.14052025.10002"
+        versionCode = 10003
+        versionName = "1.0.03.16052025.10003"
     }
 
     buildTypes {
@@ -80,6 +80,11 @@ dependencies {
     implementation("com.google.api-client:google-api-client:2.2.0")
     implementation("com.google.oauth-client:google-oauth-client-jetty:1.34.1")
     implementation("com.google.apis:google-api-services-drive:v3-rev20220815-2.0.0")
+    implementation("com.google.android.gms:play-services-auth:21.0.0")
+    implementation("com.google.http-client:google-http-client-gson:1.42.3")
+
+    implementation("com.google.api-client:google-api-client-android:1.35.0")
+
 
 
 }

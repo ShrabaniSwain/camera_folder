@@ -46,8 +46,8 @@ class TilesFolderViewActivity : AppCompatActivity() {
     private fun load() {
         folderPath = intent.getStringExtra("path") ?: ""
         Log.i("TilesActivity", "Loading folder path: $folderPath")
-        val folderName = File(folderPath).name
-        binding.folderName.text = folderName
+        val label = intent.getStringExtra("folderName") ?: File(folderPath).name
+        binding.folderName.text = label
         Thread {
             val folder = File(folderPath)
             val files = folder.listFiles()?.filter { file ->
