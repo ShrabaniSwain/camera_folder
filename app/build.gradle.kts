@@ -12,8 +12,11 @@ android {
         applicationId = "com.camfolder"
         minSdk = 26
         targetSdk = 34
-        versionCode = 10003
-        versionName = "1.0.03.16052025.10003"
+        versionCode = 10005
+        versionName = "1.0.05.16052025.10005"
+
+//        versionCode = 1
+//        versionName = "1.0-testing"
     }
 
     buildTypes {

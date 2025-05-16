@@ -153,7 +153,8 @@ class MainActivity : AppCompatActivity() {
             requestPermission()
 
         Log.i("423u5", "cache path ${cacheDir.path}")
-
+        cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        Log.i("TAG", "onCreate: $cameraManager")
         binding.capture.setOnClickListener {
             if (path.isBlank()  && !isDriveMode) return@setOnClickListener
             if (isCapture) {
@@ -1013,6 +1014,16 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        if (!::previewSize.isInitialized) {
+            Toast.makeText(this, "Camera not ready yet", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (cameraDevice == null) {
+            Toast.makeText(this, "Camera not initialized", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         val file = if (isDriveMode) {
             val storageDir = File(getExternalFilesDir(null), "videos")
             if (!storageDir.exists()) storageDir.mkdirs()
@@ -1034,7 +1045,13 @@ class MainActivity : AppCompatActivity() {
                     val rawBytes = ByteArray(buffer.remaining())
                     buffer.get(rawBytes)
 
-                    // ✅ Save raw image immediately for fast capture experience
+//                    // ✅ Save raw image immediately for fast capture experience
+//                    FileOutputStream(file).use { out ->
+//                        out.write(rawBytes)
+//                    }
+
+                    file.parentFile?.mkdirs()
+
                     FileOutputStream(file).use { out ->
                         out.write(rawBytes)
                     }
